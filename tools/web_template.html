@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#05070F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Nitro Drive — Endless Neon Racer</title>
+<style>
+/*__FONTS__*/
+html,body{margin:0;padding:0;height:100%;background:#05070F;overflow:hidden;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:none;}
+#wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#05070F;}
+canvas{display:block;outline:none;}
+#rot{position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;
+  background:#05070F;color:#fff;font-family:sans-serif;text-align:center;gap:14px;z-index:9}
+#rot svg{animation:spin 2.4s ease-in-out infinite}
+@keyframes spin{0%,40%{transform:rotate(0)}60%,100%{transform:rotate(-90deg)}}
+@media (orientation:landscape) and (max-height:520px){#rot{display:flex}}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv"></canvas></div>
+<div id="rot">
+  <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="1.6"><rect x="7" y="2" width="10" height="20" rx="2"/><circle cx="12" cy="18" r="1" fill="#00E5FF"/></svg>
+  <div style="font-family:'NRDHead',sans-serif;letter-spacing:2px;color:#00E5FF">ROTATE YOUR PHONE</div>
+  <div style="opacity:.6;font-size:13px">Nitro Drive is played in portrait</div>
+</div>
+<script>
+/*__GAME__*/
+
+// ---------------- bootstrap ----------------
+(function(){
+  var cv = document.getElementById('cv');
+  var ctx = cv.getContext('2d', {alpha:false});
+  CTX = ctx;
+  function fit(){
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var targetAR = 9/19.5;
+    var w, h;
+    if (vw / vh > targetAR){ h = vh; w = h*targetAR; } else { w = vw; h = w/targetAR; }
+    var dpr = Math.min(window.devicePixelRatio||1, 2.2);
+    cv.style.width = w+'px'; cv.style.height = h+'px';
+    cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    cv._logicalW = w; cv._logicalH = h;
+    if (window.game && window.game.world){ game.resize(w,h); }
+    ctx.canvas._w = w;
+  }
+  window.nowMs = performance.now.bind(performance);
+  // reset CTX transform after each frame configure
+  function beginFrame(){
+    var vw = cv._logicalW, vh = cv._logicalH;
+    var dpr = cv.width / vw;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.fillStyle = '#05070F';
+    ctx.fillRect(0,0,vw,vh);
+  }
+
+  // hero art glow behind the menu (web-only visual bonus)
+  window.drawHeroBackdrop = function(g, c2){
+    var img = window.NRD_ART && window.NRD_ART.hero;
+    if (!img || !img.complete || !img.naturalWidth) return;
+    var W = g.W, H = g.H;
+    CTX.save();
+    CTX.globalAlpha = 0.55;
+    var hh = H * 0.34, ww = (img.naturalWidth / img.naturalHeight) * hh;
+    CTX.drawImage(img, (W - ww) / 2, H * 0.315, ww, hh);
+    var grd = CTX.createLinearGradient(0, H * 0.28, 0, H * 0.60);
+    grd.addColorStop(0, 'rgba(5,7,15,0.9)');
+    grd.addColorStop(0.45, 'rgba(5,7,15,0.35)');
+    grd.addColorStop(1, 'rgba(5,7,15,1)');
+    CTX.globalAlpha = 1;
+    CTX.fillStyle = grd;
+    CTX.fillRect(0, H * 0.28, W, H * 0.34);
+    CTX.restore();
+  };
+  // wait for embedded webfonts so canvas text renders with the right faces
+  if (document.fonts && document.fonts.load) {
+    Promise.all([
+      document.fonts.load("20px NRDHead"),
+      document.fonts.load("20px NRDBold"),
+      document.fonts.load("20px NRDSemi"),
+      document.fonts.load("20px NRDMed")
+    ]).catch(function(){}).then(function(){ window.__FONTS_READY = true; });
+  }
+  Draw.init(null);
+  var heroImg = new Image();
+  heroImg.src = '/*__HERO__*/';
+  var logoImg = new Image();
+  logoImg.src = '/*__LOGO__*/';
+  window.NRD_ART = { hero: heroImg, logo: logoImg };
+  Store.load(null);
+  Sfx.enabled = Store.sfxOn;
+  Music.init();
+  var canvas2 = new Canvas2();
+  canvas2.haptic = function(){};          // stub for GameView.haptic on web
+  canvas2.finishApp = function(){};
+  canvas2.applyQuality = function(){};
+  canvas2.postDelayedAction = function(fn, ms){ setTimeout(fn, ms); };
+  Game.init(canvas2);
+  var game = Game;
+  window.__CTX_READY = true;
+  window.game = game;
+  game.resize(cv._logicalW || 412, cv._logicalH || 892);
+  var lastT = 0;
+  function frame(ts){
+    var dt = (ts - lastT)/1000; lastT = ts;
+    if (!(dt>0)) dt = 0.016;
+    if (dt > 0.05) dt = 0.05;
+    game._externalDt = dt;
+    game.updateExternal(dt);
+    beginFrame();
+    game.draw(canvas2);
+    requestAnimationFrame(frame);
+  }
+  fit();
+  window.addEventListener('resize', fit);
+  // pointer input
+  var downX=0, downY=0, downAt=0, dragged=false, activeId=null;
+  function pos(e){
+    var r = cv.getBoundingClientRect();
+    var sx = cv._logicalW / r.width, sy = cv._logicalH / r.height;
+    return {x:(e.clientX-r.left)*sx, y:(e.clientY-r.top)*sy};
+  }
+  cv.addEventListener('pointerdown', function(e){
+    e.preventDefault(); ac();
+    if (!Store.musicOn) Music.stop(); else Music.setEnabled(true);
+    var p = pos(e);
+    downX=p.x; downY=p.y; downAt=performance.now(); dragged=false; activeId=e.pointerId;
+    game.onDown(p.x,p.y);
+    try{cv.setPointerCapture(e.pointerId);}catch(err){}
+  });
+  cv.addEventListener('pointermove', function(e){
+    if (activeId!==e.pointerId) return;
+    var p = pos(e);
+    if (Math.abs(p.x-downX)>8 || Math.abs(p.y-downY)>8) dragged=true;
+    game.onMove(p.x,p.y);
+  });
+  function up(e){
+    if (activeId!==e.pointerId && activeId!==null) return;
+    activeId = null;
+    var p = pos(e);
+    var dt = performance.now()-downAt;
+    if (!dragged && dt<520) game.onTap(p.x,p.y);
+  }
+  cv.addEventListener('pointerup', function(e){ up(e); });
+  cv.addEventListener('pointercancel', function(){ activeId=null; });
+  window.addEventListener('keydown', function(e){
+    if (e.key==='ArrowLeft') game.onTap(game.W*0.15, game.H*0.5);
+    if (e.key==='ArrowRight') game.onTap(game.W*0.85, game.H*0.5);
+    if (e.key===' ' && game.screen===Game.PLAY) { game.fireNitro(); }
+    if (e.key==='p' && game.screen===Game.PLAY) game.world.paused = !game.world.paused;
+    if (e.key==='Escape') game.onBack();
+  });
+  document.addEventListener('visibilitychange', function(){
+    if (document.hidden){ Store.save(); Music.stop(); Sfx.setEngine(0,0); }
+    else if (Store.musicOn) Music.setEnabled(true);
+  });
+  setInterval(function(){ Store.save(); }, 5000);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
