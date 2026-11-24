@@ -2,7 +2,7 @@
 
 **An offline, endless neon road-racer for Android. No engine, no libraries, no assets — every pixel and every sound is generated in code.**
 
-[![Build APK](https://github.com/USER/nitrodrive/actions/workflows/build.yml/badge.svg)](https://github.com/USER/nitrodrive/actions/workflows/build.yml)
+[![Build APK](https://github.com/krishnapraneeth-btech/nitrodrive/actions/workflows/build.yml/badge.svg)](https://github.com/krishnapraneeth-btech/nitrodrive/actions/workflows/build.yml)
 ![minSdk](https://img.shields.io/badge/minSdk-23-brightgreen)
 ![targetSdk](https://img.shields.io/badge/targetSdk-34-blue)
 ![size](https://img.shields.io/badge/APK-2.6%20MB-orange)
